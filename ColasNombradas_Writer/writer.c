@@ -10,12 +10,61 @@
 #include <sys/stat.h>
 
 #define Name "MiFifo"
+#define buffer1 "SIGN: 1"
+#define buffer2 "SIGN: 2"
 #define SizeBuffer 20
+#define Message "XXXX: "
+
+volatile sig_atomic_t signalNumber;
+
+void handler1(int sig){
+
+    signalNumber = 1;
+
+}
+void handler2(int sig){
+
+    signalNumber = 2;
+
+}
 
 int main(){
-char buffer[SizeBuffer];
-int32_t fd = 0, code = 0;
+
+char bufferOut[SizeBuffer];
+int32_t code = 0, fd = 0;
 uint32_t bytesWrite = 0;
+struct sigaction sa;
+sa.sa_handler = handler1;
+sa.sa_flags = 0;
+
+if (sigemptyset(&sa.sa_mask) == -1){
+
+    perror("sigemptyset");
+    exit(1);
+
+}
+if (sigaction(SIGUSR1, &sa, NULL) == -1){
+
+    perror("sigaction");
+    exit(1);
+
+}
+sa.sa_handler = handler2;
+sa.sa_flags = 0;
+
+if (sigemptyset(&sa.sa_mask) == -1){
+
+    perror("sigemptyset");
+    exit(1);
+
+}
+
+if (sigaction(SIGUSR2, &sa, NULL) == -1){
+
+    perror("sigaction");
+    exit(1);
+
+}
 
 if ( (code = mknod(Name, S_IFIFO | 0644, 0)) < -1) {
 
@@ -37,27 +86,28 @@ printf("Tengo un proceso lector!! \n");
 
 while (1){
 
-    fgets(buffer, SizeBuffer, stdin);
+    fgets(bufferOut, SizeBuffer, stdin);
 
-    if( (bytesWrite = write(fd, buffer, strlen(buffer)-1) == -1) ){
+    char bufferIn[sizeof(Message) + SizeBuffer];
+
+    if (signalNumber != 0){
+
+        sprintf(bufferIn, "SIGN:%d\n", signalNumber);
+        signalNumber = 0;
+
+    }
+    else
+    {
+        sprintf(bufferIn, "DATA:%s", bufferOut);
+    }
+
+    if( (bytesWrite = write(fd, bufferIn, strlen(bufferIn)-1) == -1) ){
 
         perror("Write: ");
 
     }else {
-
-        if(buffer != SIGUSR1 && buffer != SIGUSR2){
-
-            printf("DATA: \n", buffer);
-
-        }else if (buffer == SIGUSR1){
-            
-            printf("SIGN: 1\n");
-
-        }else {
-
-            printf("SIGN: 2\n");
-
-        }
+        
+        printf("Escritor: se escribieron %d bytes\n", bytesWrite);
 
     }
 }
