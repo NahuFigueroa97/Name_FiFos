@@ -8,76 +8,65 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#define Name "MiFifoReceive"
-#define SizeBuffer 20
+#define FIFO_NAME "myfifo"
+#define BUFFER_SIZE 300
 
-int main(){
-
-char buffer[SizeBuffer];
-char log[SizeBuffer];
-int32_t fd, code;
-uint32_t bytes;
-FILE *Log, *Signals;
-
-if ( (code = mknod(Name, S_IFIFO | 0666, 0)) < -1){
-
-printf("Error creando la cola nombrada %d\n", code);
-exit(1);
-
-}
-
-printf("Esperando por un proceso escritor \n");
-
-if ( (fd = open(Name, O_RDONLY)) < 0){
-
-printf("Error abriendo la cola nombrada %d\n", fd);
-exit(1);
-
-}
-
-printf("Tengo un proceso escritor \n");
-
-Log = fopen("log.txt", "a");
-
-Signals = fopen("signals.txt", "a");
-
-if (Log == NULL && Signals == NULL){
-
-    printf("No se pudo abrir el archivo");
-    return 0;
-
-}
-
-do{
-
-if ( (bytes = read(fd, buffer, SizeBuffer)) == -1) {
-
-    perror("read:");
-
-}else{
-
-    buffer[SizeBuffer] = '\0';
-
-}
-
-if (!strncmp("DATA:", buffer, SizeBuffer)){
-
-    fprintf(Log, "%s\n", buffer);
-    printf("%s\n", buffer);
-
-}
-
-else{
-
-    fprintf(Signals, "%s\n", buffer);
-    printf("%s\n", buffer);
-
-}
-
-}while (bytes > 0);
-
+int main(void)
+{
+    uint8_t inputBuffer[BUFFER_SIZE];
+    int32_t bytesRead, returnCode, fd;
+    size_t ndat = 5;
+    FILE *Log, *Signals;
+    /* Create named fifo. -1 means already exists so no action if already exists */
+    if ((returnCode = mknod(FIFO_NAME, S_IFIFO | 0666, 0)) < -1)
+    {
+        printf("Error creating named fifo: %d\n", returnCode);
+        exit(1);
+    }
+    /* Open named fifo. Blocks until other process opens it */
+    printf("waiting for writers...\n");
+    if ((fd = open(FIFO_NAME, O_RDONLY)) < 0)
+    {
+        printf("Error opening named fifo file: %d\n", fd);
+        exit(1);
+    }
+    /* open syscalls returned without error -> other process attached to named fifo */
+    printf("got a writer\n");
+    Log = fopen("log.txt", "a");
+    if (Log == NULL)
+    {
+        printf("Could not open log.txt");
+        return 0;
+    }
+    Signals = fopen("signals.txt", "a");
+    if (Signals == NULL)
+    {
+        printf("Could not open signals.txt");
+        return 0;
+    }
+    /* Loop until read syscall returns a value <= 0 */
+    do
+    {
+        /* read data into local buffer */
+        if ((bytesRead = read(fd, inputBuffer, BUFFER_SIZE)) == -1)
+        {
+            perror("read");
+        }
+        else
+        {
+            inputBuffer[bytesRead] = '\0';
+            printf("reader: read %d bytes\n", bytesRead);
+        }
+        if (!strncmp("DATA:", inputBuffer, ndat))
+        {
+            fprintf(Log, "%s\n", inputBuffer);
+            printf("%s\n", inputBuffer);
+        }
+        else
+        {
+            fprintf(Signals, "%s\n", inputBuffer);
+            printf("%s\n", inputBuffer);
+        }
+    } while (bytesRead > 0);
     fclose(Log);
-    fclose(Signals);
-    return 0;
-
 }
